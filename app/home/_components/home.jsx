@@ -1,8 +1,7 @@
 "use client";
 
-import AzurePlayerBot from "@/components/AzureCast2";
-import StarsWrapper from "@/components/canvas/StarsWrapper";
-import PlayerBot from "@/components/RadioPlayer";
+import AzurePlayerBot from "@/components/AzureCastPlayer";
+import StarsWrapper from "@/components/canvas/StarsWrapper";  
 import { useRouter } from "next/navigation";
 
 // List of Spotify playlist or track embed URLs

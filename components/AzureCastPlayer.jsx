@@ -77,6 +77,7 @@ export default function AzurePlayerBot() {
   const videoRef = useRef(null);
   const ytPlayerRef = useRef(null);
   const [isYtPlayerReady, setIsYtPlayerReady] = useState(false);
+  const [isYtApiLoaded, setIsYtApiLoaded] = useState(false);
 
   const [nowPlaying, setNowPlaying] = useState(null);
   const [queue, setQueue] = useState([]);
@@ -274,10 +275,7 @@ export default function AzurePlayerBot() {
   };
 
   return (
-    <div
-      className="w-full sm:w-[80%] mx-auto"
-      onClick={(e) => e.stopPropagation()}
-    >
+    <div className="w-full sm:w-[80%] mx-auto">
       {/* Add custom CSS for animations */}
       <style jsx>{`
         @keyframes spin-slow {
@@ -446,7 +444,7 @@ export default function AzurePlayerBot() {
                 )}
               </div>
 
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <h2 className="text-white text-xl sm:text-2xl font-bold mb-1 truncate">
                   {title}
                 </h2>
@@ -502,7 +500,7 @@ export default function AzurePlayerBot() {
 
               <button
                 onClick={() => setIsPlaying((p) => !p)}
-                className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 text-white flex items-center justify-center hover:scale-110 transition-transform shadow-lg shadow-purple-500/50"
+                className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-linear-to-r from-purple-500 to-pink-500 text-white flex items-center justify-center hover:scale-110 transition-transform shadow-lg shadow-purple-500/50"
               >
                 {isPlaying ? (
                   <Pause className="w-6 h-6 sm:w-7 sm:h-7" />

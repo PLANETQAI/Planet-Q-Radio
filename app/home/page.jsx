@@ -1,10 +1,11 @@
 import React from "react";
-import RadioPage from "./_components/home";
+import AzureCastUpload from "@/components/AzureCastUpload";
 
 function Home() {
   return (
-    <div>
-      <RadioPage />
+    <div className="flex flex-col items-center gap-12 py-12">
+      <AzureCastUpload />
+      Home
     </div>
   );
 }

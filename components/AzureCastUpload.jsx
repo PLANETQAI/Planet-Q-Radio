@@ -1,62 +1,64 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Upload, Music, Video, ListMusic, XCircle, CheckCircle } from "lucide-react";
+import {
+  Upload,
+  Music,
+  Link,
+  File,
+  ListMusic,
+  XCircle,
+  CheckCircle,
+  Loader2,
+  Download,
+  Cloud,
+  Youtube,
+} from "lucide-react";
 
 /*
-  CONFIG - These should match the values in your other components
+  CONFIG - Update these with your actual API endpoints
 */
 const API_BASE = process.env.NEXT_PUBLIC_AZURACAST_API;
 const STATION_ID = process.env.NEXT_PUBLIC_STATION_ID;
 
-// API Endpoints
-const PLAYLISTS_URL = `${API_BASE}/station/${STATION_ID}/playlists`;
-const UPLOAD_URL = `${API_BASE}/station/${STATION_ID}/files`;
-
-// A simple styled input component to match the project's aesthetic
-const StyledInput = ({ className, ...props }) => (
-  <input
-    className={`w-full bg-gray-700 border border-gray-600 text-white rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 ${className}`}
-    {...props}
-  />
-);
-
-// A simple styled select component
-const StyledSelect = ({ className, children, ...props }) => (
-  <select
-    className={`w-full bg-gray-700 border border-gray-600 text-white rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 appearance-none ${className}`}
-    {...props}
-  >
-    {children}
-  </select>
-);
+// Your backend API endpoints
+const YOUR_API_UPLOAD = "/api/upload";
+const PLAYLISTS_URL = "/api/playlists";
 
 export default function AzureCastUpload() {
   const [file, setFile] = useState(null);
-  const [songSource, setSongSource] = useState("");
+  const [youtubeUrl, setYoutubeUrl] = useState("");
   const [playlists, setPlaylists] = useState([]);
   const [selectedPlaylist, setSelectedPlaylist] = useState("");
-  
-  const [status, setStatus] = useState({ type: "idle", message: "Select a file to upload." });
+  const [songTitle, setSongTitle] = useState("");
+  const [songArtist, setSongArtist] = useState("");
+
+  const [status, setStatus] = useState({
+    type: "idle",
+    message: "Ready to upload",
+  });
+
+  const fileInputRef = useRef(null);
 
   // Fetch playlists on component mount
   useEffect(() => {
     const fetchPlaylists = async () => {
       try {
-        setStatus({ type: "loading", message: "Fetching playlists..." });
         const res = await fetch(PLAYLISTS_URL);
         if (!res.ok) throw new Error("Failed to fetch playlists");
         const data = await res.json();
-        
-        // Filter for standard playlists that we can upload to
-        const standardPlaylists = data.filter(p => p.type === 'default');
+
+        const standardPlaylists = data.filter((p) => p.type === "default");
         setPlaylists(standardPlaylists);
         if (standardPlaylists.length > 0) {
-            setSelectedPlaylist(standardPlaylists[0].id);
+          setSelectedPlaylist(standardPlaylists[0].id);
         }
-        setStatus({ type: "idle", message: "Select a file to upload." });
       } catch (error) {
-        setStatus({ type: "error", message: error.message || "Could not load playlists." });
+        console.error("Error fetching playlists:", error);
+        setStatus({
+          type: "error",
+          message: "Could not load playlists",
+        });
       }
     };
     fetchPlaylists();
@@ -66,179 +68,280 @@ export default function AzureCastUpload() {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
       setFile(selectedFile);
-      setStatus({ type: "idle", message: `File selected: ${selectedFile.name}` });
+      setStatus({
+        type: "idle",
+        message: `Selected: ${selectedFile.name}`,
+      });
+    }
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const droppedFile = e.dataTransfer.files?.[0];
+    if (droppedFile) {
+      setFile(droppedFile);
+      setStatus({
+        type: "idle",
+        message: `Selected: ${droppedFile.name}`,
+      });
     }
   };
 
   const handleUpload = async () => {
     if (!file) {
-      setStatus({ type: "error", message: "Please select a file first." });
+      setStatus({ type: "error", message: "Please select an MP3 file first" });
       return;
     }
     if (!selectedPlaylist) {
-        setStatus({ type: "error", message: "Please select a playlist." });
-        return;
-    }
-
-    setStatus({ type: "loading", message: "Preparing to upload..." });
-
-    let fileToUpload = file;
-
-    // --- Video Processing Placeholder ---
-    if (file.type.startsWith("video/")) {
-      setStatus({ type: "loading", message: "Extracting audio from video... (This part is a placeholder)" });
-      
-      // NOTE: Client-side audio extraction is complex and requires a library like ffmpeg.wasm.
-      // The following is a placeholder for where that logic would go.
-      // For now, we will show an error.
-      
-      /*
-      // Example with ffmpeg.wasm (requires installation and setup)
-      try {
-        const { createFFmpeg, fetchFile } = require('@ffmpeg/ffmpeg'); // Fictional import
-        const ffmpeg = createFFmpeg({ log: true });
-        await ffmpeg.load();
-        ffmpeg.FS('writeFile', file.name, await fetchFile(file));
-        await ffmpeg.run('-i', file.name, 'output.mp3');
-        const data = ffmpeg.FS('readFile', 'output.mp3');
-        const mp3Blob = new Blob([data.buffer], { type: 'audio/mpeg' });
-        fileToUpload = new File([mp3Blob], `${file.name}.mp3`);
-        setStatus({ type: "loading", message: "Audio extracted. Now uploading..." });
-      } catch (error) {
-        setStatus({ type: "error", message: `Video processing failed: ${error.message}` });
-        return;
-      }
-      */
-      
-      setStatus({ type: "error", message: "Video processing is not yet implemented. Please upload an MP3 file." });
+      setStatus({ type: "error", message: "Please select a playlist" });
       return;
     }
-    
-    // --- Upload Logic ---
-    try {
-      setStatus({ type: "loading", message: `Uploading ${fileToUpload.name}...` });
 
-      const playlist = playlists.find(p => p.id === parseInt(selectedPlaylist));
-      if (!playlist) throw new Error("Could not find selected playlist details.");
+    try {
+      setStatus({ type: "loading", message: "Processing..." });
 
       const formData = new FormData();
-      formData.append('file', fileToUpload);
-      // The 'path' determines the folder in AzuraCast's media manager.
-      // For a playlist named "My Playlist", the path is typically "media/My Playlist".
-      // We get the playlist name from the fetched data.
-      formData.append('path', `media/${playlist.name}`);
+      formData.append("file", file);
+      formData.append("playlistId", selectedPlaylist);
 
-      const res = await fetch(UPLOAD_URL, {
-        method: 'POST',
-        // AzuraCast API key would be needed here if not using cookies/session auth
-        // headers: { 'Authorization': 'Bearer YOUR_API_KEY' },
+      if (songTitle) formData.append("title", songTitle);
+      if (songArtist) formData.append("artist", songArtist);
+      if (youtubeUrl) formData.append("video_url", youtubeUrl);
+
+      const res = await fetch(YOUR_API_UPLOAD, {
+        method: "POST",
         body: formData,
       });
 
       if (!res.ok) {
         const errorData = await res.json();
-        throw new Error(errorData.message || "Upload failed with status: " + res.status);
+        throw new Error(errorData.message || "Upload failed");
       }
 
-      setStatus({ type: "success", message: "Upload successful! AzuraCast will now process the file." });
-      setFile(null); // Reset file input
-      
-      // TODO: After upload, find the song's ID and update its metadata
-      // with the "songSource" and a link to the video if applicable.
-      // This is a multi-step process:
-      // 1. Search for the media item by path.
-      // 2. Get its unique song_id.
-      // 3. Make a PUT request to /api/station/{id}/song/{song_id} with custom fields.
+      const result = await res.json();
 
+      setStatus({
+        type: "success",
+        message: result.message || "Upload successful!",
+      });
+
+      // Reset form
+      setFile(null);
+      setYoutubeUrl("");
+      setSongTitle("");
+      setSongArtist("");
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+
+      // Auto-clear success message after 5 seconds
+      setTimeout(() => {
+        setStatus({ type: "idle", message: "Ready to upload" });
+      }, 5000);
     } catch (error) {
-      setStatus({ type: "error", message: error.message || "An unknown error occurred during upload." });
+      setStatus({
+        type: "error",
+        message: error.message || "Upload failed",
+      });
     }
   };
 
   const getStatusIcon = () => {
     switch (status.type) {
       case "loading":
-        return <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-purple-400" />;
+        return <Loader2 className="h-5 w-5 text-purple-400 animate-spin" />;
       case "error":
         return <XCircle className="h-5 w-5 text-red-500" />;
       case "success":
         return <CheckCircle className="h-5 w-5 text-green-500" />;
       default:
-        return <Music className="h-5 w-5 text-gray-400" />;
+        return <Cloud className="h-5 w-5 text-gray-400" />;
     }
   };
 
   return (
-    <div className="w-full max-w-2xl mx-auto bg-gray-800/80 backdrop-blur-sm rounded-lg p-6 shadow-lg border border-gray-700">
-      <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
-        <Upload /> AzuraCast Uploader
-      </h2>
+    <div className="w-full max-w-3xl mx-auto">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-purple-600 to-pink-600 rounded-t-2xl p-6">
+        <div className="flex items-center gap-3">
+          <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm">
+            <Music className="h-8 w-8 text-white" />
+          </div>
+          <div>
+            <h2 className="text-2xl font-bold text-white">Upload Music</h2>
+            <p className="text-purple-100 text-sm">
+              Add songs to your radio station
+            </p>
+          </div>
+        </div>
+      </div>
 
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-300 mb-1">
-            Song File (MP3 or Video)
-          </label>
-          <StyledInput 
-            type="file" 
-            accept="audio/mpeg,video/*"
+      {/* Main Content */}
+      <div className="bg-gray-800/95 backdrop-blur-sm rounded-b-2xl p-6 shadow-2xl border border-gray-700 border-t-0">
+        {/* File Upload Area */}
+        <div
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+          className="mb-6 border-2 border-dashed border-gray-600 rounded-xl p-8 text-center hover:border-purple-500 transition-colors cursor-pointer bg-gray-900/50"
+          onClick={() => fileInputRef.current?.click()}
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="audio/mp3,audio/mpeg,.mp3"
             onChange={handleFileChange}
-            className="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-purple-600 file:text-white hover:file:bg-purple-700"
+            className="hidden"
           />
+          <div className="flex flex-col items-center gap-3">
+            <div className="p-4 bg-purple-500/20 rounded-full">
+              <Upload className="h-8 w-8 text-purple-400" />
+            </div>
+            {file ? (
+              <>
+                <p className="text-white font-medium">{file.name}</p>
+                <p className="text-gray-400 text-sm">
+                  {(file.size / 1024 / 1024).toFixed(2)} MB
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-white font-medium">
+                  Drop your MP3 file here or click to browse
+                </p>
+                <p className="text-gray-400 text-sm">
+                  Supports MP3 audio files only
+                </p>
+              </>
+            )}
+          </div>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-300 mb-1">
-            Song Source (Optional)
+        {/* Song Metadata */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Song Title (Optional)
+            </label>
+            <input
+              type="text"
+              value={songTitle}
+              onChange={(e) => setSongTitle(e.target.value)}
+              placeholder="Enter song title"
+              className="w-full bg-gray-700 border border-gray-600 text-white rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Artist (Optional)
+            </label>
+            <input
+              type="text"
+              value={songArtist}
+              onChange={(e) => setSongArtist(e.target.value)}
+              placeholder="Enter artist name"
+              className="w-full bg-gray-700 border border-gray-600 text-white rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            />
+          </div>
+        </div>
+
+        {/* YouTube Video Link */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-300 mb-2">
+            <Youtube className="inline h-4 w-4 mr-1" />
+            YouTube Video Link (Optional)
           </label>
-          <StyledInput
-            type="text"
-            placeholder="e.g., YouTube, SoundCloud, Bandcamp"
-            value={songSource}
-            onChange={(e) => setSongSource(e.target.value)}
-          />
-          <p className="text-xs text-gray-500 mt-1">This metadata can be used in the future.</p>
+          <div className="relative">
+            <Link className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+            <input
+              type="text"
+              value={youtubeUrl}
+              onChange={(e) => setYoutubeUrl(e.target.value)}
+              placeholder="https://youtube.com/watch?v=..."
+              className="w-full bg-gray-700 border border-gray-600 text-white rounded-xl pl-11 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            />
+          </div>
+          <p className="text-xs text-gray-500 mt-2">
+            Add a YouTube link if this song is from a video
+          </p>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-300 mb-1">
+        {/* Playlist Selection */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-300 mb-2">
+            <ListMusic className="inline h-4 w-4 mr-1" />
             Destination Playlist
           </label>
-          <StyledSelect
+          <select
             value={selectedPlaylist}
             onChange={(e) => setSelectedPlaylist(e.target.value)}
             disabled={playlists.length === 0}
+            className="w-full bg-gray-700 border border-gray-600 text-white rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent appearance-none cursor-pointer"
           >
             {playlists.length > 0 ? (
               playlists.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
               ))
             ) : (
               <option>Loading playlists...</option>
             )}
-          </StyledSelect>
+          </select>
         </div>
 
-        <div className="pt-4">
-          <button
-            onClick={handleUpload}
-            disabled={!file || status.type === 'loading'}
-            className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-bold py-3 px-4 rounded-lg hover:scale-105 transition-transform disabled:opacity-50 disabled:cursor-not-allowed disabled:scale-100"
+        {/* Status Message */}
+        <div
+          className={`flex items-center gap-3 p-4 rounded-xl mb-6 ${
+            status.type === "error"
+              ? "bg-red-500/10 border border-red-500/30"
+              : status.type === "success"
+              ? "bg-green-500/10 border border-green-500/30"
+              : status.type === "loading"
+              ? "bg-purple-500/10 border border-purple-500/30"
+              : "bg-gray-700/50 border border-gray-600"
+          }`}
+        >
+          {getStatusIcon()}
+          <p
+            className={`text-sm font-medium ${
+              status.type === "error"
+                ? "text-red-400"
+                : status.type === "success"
+                ? "text-green-400"
+                : status.type === "loading"
+                ? "text-purple-400"
+                : "text-gray-300"
+            }`}
           >
-            <Upload className="h-5 w-5" />
-            <span>{status.type === 'loading' ? 'Uploading...' : 'Upload to AzuraCast'}</span>
-          </button>
+            {status.message}
+          </p>
         </div>
 
-        <div className="flex items-center gap-3 p-3 bg-gray-900/50 rounded-lg mt-4">
-            {getStatusIcon()}
-            <p className={`text-sm ${
-                status.type === 'error' ? 'text-red-400' : 
-                status.type === 'success' ? 'text-green-400' : 'text-gray-300'
-            }`}>
-                {status.message}
-            </p>
-        </div>
+        {/* Upload Button */}
+        <button
+          onClick={handleUpload}
+          disabled={status.type === "loading" || !file}
+          className="w-full flex items-center justify-center gap-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-bold py-4 px-6 rounded-xl hover:shadow-lg hover:shadow-purple-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none group"
+        >
+          {status.type === "loading" ? (
+            <>
+              <Loader2 className="h-5 w-5 animate-spin" />
+              <span>Processing...</span>
+            </>
+          ) : (
+            <>
+              <Upload className="h-5 w-5 group-hover:scale-110 transition-transform" />
+              <span>Upload to AzuraCast</span>
+            </>
+          )}
+        </button>
       </div>
     </div>
   );
