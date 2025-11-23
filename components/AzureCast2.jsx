@@ -97,6 +97,8 @@ function getYoutubeEmbedUrl(youtubeUrl) {
 export default function AzurePlayerBot() {
   const audioRef = useRef(null);
   const videoRef = useRef(null);
+  const ytPlayerRef = useRef(null);
+  const [isYtPlayerReady, setIsYtPlayerReady] = useState(false);
 
   // metadata
   const [nowPlaying, setNowPlaying] = useState(null);
@@ -142,6 +144,22 @@ export default function AzurePlayerBot() {
       console.error("Error fetching nowplaying:", err);
     }
   }, []);
+
+  // metadata helpers
+  const title =
+    nowPlaying?.now_playing?.song?.title ||
+    nowPlaying?.now_playing?.song?.text ||
+    "Live Radio";
+  const artist =
+    nowPlaying?.now_playing?.song?.artist ||
+    nowPlaying?.now_playing?.song?.album ||
+    "";
+
+  const albumArtUrl = getAlbumArtUrl(nowPlaying);
+  const coverSrc = albumArtUrl || "/images/radio1.jpeg"; // fallback image
+
+  const videoUrl = getVideoUrl(nowPlaying);
+  const youtubeEmbedUrl = getYoutubeEmbedUrl(videoUrl);
 
   useEffect(() => {
     // initial load
@@ -192,26 +210,65 @@ export default function AzurePlayerBot() {
     }
   }, [isPlaying, nowPlaying]);
 
-  // metadata helpers
-  const title =
-    nowPlaying?.now_playing?.song?.title ||
-    nowPlaying?.now_playing?.song?.text ||
-    "Live Radio";
-  const artist =
-    nowPlaying?.now_playing?.song?.artist ||
-    nowPlaying?.now_playing?.song?.album ||
-    "";
+  // YouTube Player State Management
+  useEffect(() => {
+    if (!youtubeEmbedUrl) {
+      if (ytPlayerRef.current) {
+        ytPlayerRef.current.destroy();
+        ytPlayerRef.current = null;
+      }
+      setIsYtPlayerReady(false);
+      return;
+    }
 
-  console.log("Now Playing:", nowPlaying);
+    const videoId = youtubeEmbedUrl.match(/embed\/([^?]+)/)?.[1];
+    if (!videoId) return;
 
-  const albumArtUrl = getAlbumArtUrl(nowPlaying);
-  console.log("Album Art URL:", albumArtUrl);
-  const coverSrc = albumArtUrl || "/images/radio1.jpeg"; // fallback image
+    const setupPlayer = () => {
+      if (ytPlayerRef.current) {
+        ytPlayerRef.current.destroy();
+      }
+      ytPlayerRef.current = new window.YT.Player("youtube-player-container", {
+        videoId: videoId,
+        playerVars: {
+          autoplay: 0,
+          mute: 1,
+          loop: 1,
+          playlist: videoId,
+          controls: 0,
+        },
+        events: {
+          onReady: () => setIsYtPlayerReady(true),
+        },
+      });
+    };
 
-  const videoUrl = getVideoUrl(nowPlaying);
-  console.log("Video URL:", videoUrl);
-  const youtubeEmbedUrl = getYoutubeEmbedUrl(videoUrl);
-  console.log("YouTube Embed URL:", youtubeEmbedUrl);
+    // If the API is ready, setup the player
+    if (window.YT && window.YT.Player) {
+      setupPlayer();
+    } else {
+      // If API not ready, we need to load it.
+      // The global callback will be responsible for setting up the player.
+      window.onYouTubeIframeAPIReady = setupPlayer;
+
+      // Check if the script tag already exists to avoid duplicates
+      if (!document.querySelector('script[src="https://www.youtube.com/iframe_api"]')) {
+        const tag = document.createElement("script");
+        tag.src = "https://www.youtube.com/iframe_api";
+        document.body.appendChild(tag);
+      }
+    }
+  }, [youtubeEmbedUrl]);
+
+  useEffect(() => {
+    if (ytPlayerRef.current && isYtPlayerReady) {
+      if (isPlaying) {
+        ytPlayerRef.current.playVideo();
+      } else {
+        ytPlayerRef.current.pauseVideo();
+      }
+    }
+  }, [isPlaying, isYtPlayerReady]);
 
   // For queue item display: normalize for display string
   const queueDisplayText = (item) => {
@@ -227,7 +284,7 @@ export default function AzurePlayerBot() {
 
   return (
     <div
-      className="w-full sm:w-[80%] h-[80vh]"
+      className="w-full sm:w-[80%] mx-auto"
       onClick={(e) => e.stopPropagation()}
     >
       {/* header */}
@@ -317,15 +374,27 @@ export default function AzurePlayerBot() {
       >
         <div className="absolute inset-0">
           {/* background visual (animated or static) */}
-          {youtubeEmbedUrl && isPlaying ? (
-            <iframe
-              src={youtubeEmbedUrl}
-              className="absolute top-0 left-0 w-full h-full"
-              frameBorder="0"
-              allow="autoplay; encrypted-media"
-              allowFullScreen
-              title="Now Playing Video"
-            />
+          {youtubeEmbedUrl ? (
+            <div className="relative w-full h-full bg-black">
+              {/* Album Art as thumbnail/background */}
+              {albumArtUrl && (
+                <Image
+                  key={albumArtUrl}
+                  src={albumArtUrl}
+                  alt="Song artwork background"
+                  fill
+                  className="object-cover"
+                  unoptimized
+                />
+              )}
+              {/* YouTube Player (conditionally visible) */}
+              <div
+                id="youtube-player-container"
+                className={`absolute top-0 left-0 w-full h-full transition-opacity duration-300 ${
+                  isYtPlayerReady && isPlaying ? "opacity-100" : "opacity-0"
+                }`}
+              />
+            </div>
           ) : videoUrl && videoUrl.endsWith('.mp4') ? (
             <video
               ref={videoRef}

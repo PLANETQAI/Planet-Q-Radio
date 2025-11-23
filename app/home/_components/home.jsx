@@ -1,5 +1,6 @@
 "use client";
 
+import AzurePlayerBot from "@/components/AzureCast2";
 import StarsWrapper from "@/components/canvas/StarsWrapper";
 import PlayerBot from "@/components/RadioPlayer";
 import { useRouter } from "next/navigation";
@@ -36,7 +37,7 @@ const RadioContent = () => {
           Click Play and Vibe Out
         </p>
         <div className="w-full flex justify-center">
-          <PlayerBot />
+          <AzurePlayerBot />
         </div>
         {/* <div className="space-y-10">
           {spotifyEmbeds.map((embed, idx) => (

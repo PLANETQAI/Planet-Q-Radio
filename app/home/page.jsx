@@ -1,10 +1,10 @@
-import AzurePlayerBot from "@/components/AzureCast2";
 import React from "react";
+import RadioPage from "./_components/home";
 
 function Home() {
   return (
     <div>
-      <AzurePlayerBot />
+      <RadioPage />
     </div>
   );
 }
