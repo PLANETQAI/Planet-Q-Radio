@@ -17,38 +17,90 @@ import {
 /*
   CONFIG - change as needed
   - API_BASE: your AzuraCast base
-  - STATION_ID: 4 (you gave)
-  - STREAM_URL: placeholder {STREAM_URL} (replace or set NEXT_PUBLIC_STREAM_URL)
+  - STATION_ID: your station ID
+  - STREAM_URL: your stream URL
 */
 const API_BASE = process.env.NEXT_PUBLIC_AZURACAST_API;
 const STATION_ID = process.env.NEXT_PUBLIC_STATION_ID;
 const STREAM_URL = process.env.NEXT_PUBLIC_STREAM_URL;
 
-const NOW_PLAYING_URL = `${API_BASE}/api/stations/${STATION_ID}/nowplaying`;
-const QUEUE_URL = `${API_BASE}/api/stations/${STATION_ID}/queue`;
+// Assuming API_BASE is set to 'http://host/api', this builds the correct URL to the nowplaying endpoint.
+const NOW_PLAYING_URL = `${API_BASE}/nowplaying`;
 
-// Helpful small util to safely pick album art from common possible fields
-function getAlbumArt(nowPlaying) {
+// Util to construct full absolute URL for artwork
+function getAlbumArtUrl(nowPlaying) {
   if (!nowPlaying) return null;
-  // Common AzuraCast fields:
+
   const song = nowPlaying.now_playing?.song || {};
-  // try common keys
-  return (
-    song.art ||
-    song.art_url ||
-    song.album_art ||
-    song.thumbnail ||
-    nowPlaying.station?.branding?.cover ||
-    null
-  );
+  const art = song.art || null;
+
+  if (!art) return null;
+  if (art.startsWith("http")) return art;
+
+  try {
+    const origin = new URL(API_BASE).origin;
+    return `${origin}${art}`;
+  } catch (e) {
+    console.error("Error constructing album art URL:", e);
+    return art; // fallback to relative
+  }
 }
 
-export default function PlayerBot() {
+// Util to find a video URL from custom fields
+function getVideoUrl(nowPlaying) {
+  const customFields = nowPlaying?.now_playing?.song?.custom_fields;
+  if (!customFields) return null;
+
+  // Look for a field that contains a video URL
+  for (const key in customFields) {
+    const value = customFields[key];
+    if (typeof value === "string") {
+      const trimmedValue = value.trim();
+      if (
+        trimmedValue.includes("youtube.com/") ||
+        trimmedValue.includes("youtu.be/") ||
+        trimmedValue.endsWith(".mp4")
+      ) {
+        return trimmedValue;
+      }
+    }
+  }
+  return null;
+}
+
+// Util to convert a youtube watch URL to an embeddable one
+function getYoutubeEmbedUrl(youtubeUrl) {
+  if (!youtubeUrl) return null;
+
+  let videoId = null;
+
+  // Regex for youtube.com/watch?v=...
+  const watchMatch = youtubeUrl.match(/[?&]v=([^&]+)/);
+  if (watchMatch && watchMatch[1]) {
+    videoId = watchMatch[1];
+  } else {
+    // Regex for youtu.be/...
+    const shortMatch = youtubeUrl.match(/youtu\.be\/([^?&#]+)/);
+    if (shortMatch && shortMatch[1]) {
+      videoId = shortMatch[1];
+    }
+  }
+
+  if (videoId) {
+    // Autoplay, mute, loop, no controls for background effect
+    return `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&loop=1&playlist=${videoId}&controls=0&showinfo=0&autohide=1`;
+  }
+
+  return null;
+}
+
+export default function AzurePlayerBot() {
   const audioRef = useRef(null);
+  const videoRef = useRef(null);
 
   // metadata
   const [nowPlaying, setNowPlaying] = useState(null);
-  const [queue, setQueue] = useState([]);
+  const [queue, setQueue] = useState([]); // will be [playing_next, ...song_history]
 
   // UI states
   const [isPlaying, setIsPlaying] = useState(false);
@@ -60,48 +112,46 @@ export default function PlayerBot() {
   // Selected queue item (for display only)
   const [selectedQueueIndex, setSelectedQueueIndex] = useState(null);
 
-  // Fetch now playing
+  // Fetch now playing data
   const fetchNowPlaying = useCallback(async () => {
     try {
       const res = await fetch(NOW_PLAYING_URL, { cache: "no-store" });
       if (!res.ok) throw new Error("NowPlaying fetch failed");
+
+      // Per user, the response can be an array with one station object, or just the object
       const data = await res.json();
-      setNowPlaying(data);
+      console.log("Fetched now playing data:", data);
+      const stationData = Array.isArray(data) ? data[0] : data;
+
+      if (stationData) {
+        setNowPlaying(stationData);
+
+        // Update queue from now playing data
+        const nextSong = stationData.playing_next;
+        const history = stationData.song_history || [];
+
+        const newQueue = [];
+        if (nextSong) {
+          newQueue.push({ ...nextSong, is_next: true });
+        }
+        newQueue.push(...history);
+        setQueue(newQueue);
+      }
     } catch (err) {
       // silently fail but keep previous state
       console.error("Error fetching nowplaying:", err);
     }
   }, []);
 
-  // Fetch queue / upcoming
-  const fetchQueue = useCallback(async () => {
-    try {
-      const res = await fetch(QUEUE_URL, { cache: "no-store" });
-      if (!res.ok) throw new Error("Queue fetch failed");
-      const data = await res.json();
-      // queue shape can vary by AzuraCast version - try to normalize
-      // if data is an array of cue objects or an object with "queue"
-      if (Array.isArray(data)) setQueue(data);
-      else if (Array.isArray(data.queue)) setQueue(data.queue);
-      else setQueue([]);
-    } catch (err) {
-      console.error("Error fetching queue:", err);
-    }
-  }, []);
-
   useEffect(() => {
     // initial load
     fetchNowPlaying();
-    fetchQueue();
 
     // autopoll every 5 seconds
-    const interval = setInterval(() => {
-      fetchNowPlaying();
-      fetchQueue();
-    }, 5000);
+    const interval = setInterval(fetchNowPlaying, 5000);
 
     return () => clearInterval(interval);
-  }, [fetchNowPlaying, fetchQueue]);
+  }, [fetchNowPlaying]);
 
   // audio element management
   useEffect(() => {
@@ -128,6 +178,20 @@ export default function PlayerBot() {
     }
   }, [isPlaying]);
 
+  // control video playback
+  useEffect(() => {
+    // For HTML5 video, play/pause along with audio
+    if (videoRef.current) {
+      if (isPlaying) {
+        videoRef.current.play().catch(() => {
+          // Video play was likely prevented by browser.
+        });
+      } else {
+        videoRef.current.pause();
+      }
+    }
+  }, [isPlaying, nowPlaying]);
+
   // metadata helpers
   const title =
     nowPlaying?.now_playing?.song?.title ||
@@ -137,20 +201,22 @@ export default function PlayerBot() {
     nowPlaying?.now_playing?.song?.artist ||
     nowPlaying?.now_playing?.song?.album ||
     "";
-  const albumArt = getAlbumArt(nowPlaying);
-  const coverSrc = albumArt || "/images/default-album.png"; // ensure you have this fallback image
+
+  console.log("Now Playing:", nowPlaying);
+
+  const albumArtUrl = getAlbumArtUrl(nowPlaying);
+  console.log("Album Art URL:", albumArtUrl);
+  const coverSrc = albumArtUrl || "/images/radio1.jpeg"; // fallback image
+
+  const videoUrl = getVideoUrl(nowPlaying);
+  console.log("Video URL:", videoUrl);
+  const youtubeEmbedUrl = getYoutubeEmbedUrl(videoUrl);
+  console.log("YouTube Embed URL:", youtubeEmbedUrl);
 
   // For queue item display: normalize for display string
   const queueDisplayText = (item) => {
-    // AzuraCast's queue item commonly present as {cued_song: {text: "..."}}
-    if (!item) return "";
-    if (item.cued_song?.text) return item.cued_song.text;
-    if (item.text) return item.text;
-    // sometimes cue contains song object
-    if (item.song?.title)
-      return `${item.song.title} — ${item.song.artist || ""}`;
-    // fallback to JSON
-    return JSON.stringify(item).slice(0, 120);
+    if (!item || !item.song) return "";
+    return item.song.text || `${item.song.title} - ${item.song.artist}`;
   };
 
   // clicking a playlist item will select it (display only)
@@ -250,14 +316,43 @@ export default function PlayerBot() {
         style={{ paddingBottom: "56.25%" }}
       >
         <div className="absolute inset-0">
-          {/* background visual (animated) */}
-          <video
-            src="/images/bg-video-compressed.mp4"
-            className="absolute top-0 left-0 w-full h-full object-cover"
-            autoPlay
-            loop
-            muted
-          />
+          {/* background visual (animated or static) */}
+          {youtubeEmbedUrl && isPlaying ? (
+            <iframe
+              src={youtubeEmbedUrl}
+              className="absolute top-0 left-0 w-full h-full"
+              frameBorder="0"
+              allow="autoplay; encrypted-media"
+              allowFullScreen
+              title="Now Playing Video"
+            />
+          ) : videoUrl && videoUrl.endsWith('.mp4') ? (
+            <video
+              ref={videoRef}
+              key={videoUrl}
+              src={videoUrl}
+              className="absolute top-0 left-0 w-full h-full object-cover"
+              loop
+              muted
+            />
+          ) : albumArtUrl ? (
+            <Image
+              key={albumArtUrl}
+              src={albumArtUrl}
+              alt="Song artwork background"
+              fill
+              className="object-cover"
+              unoptimized
+            />
+          ) : (
+            <video
+              ref={videoRef}
+              src="/images/bg-video-compressed.mp4"
+              className="absolute top-0 left-0 w-full h-full object-cover"
+              loop
+              muted
+            />
+          )}
 
           {/* overlay track info + album art */}
           <div className="absolute inset-0 flex items-end">
@@ -269,8 +364,7 @@ export default function PlayerBot() {
                   alt="Album Art"
                   fill
                   className="object-cover"
-                  // Next/Image requires domain config if external. If AzuraCast returns external URL,
-                  // configure next.config.js domains or use a normal <img> tag.
+                  unoptimized // Important for external URLs not in next.config.js
                 />
               </div>
 
@@ -296,93 +390,99 @@ export default function PlayerBot() {
       </div>
 
       {/* audio element (live stream) */}
-      <audio ref={audioRef} src={STREAM_URL} />
+      <audio ref={audioRef} src={STREAM_URL} crossOrigin="anonymous" />
 
       {/* controls */}
       <div className="bg-gray-800 w-full rounded-b-lg p-3 sm:p-4">
         <div className="w-full mb-3">
-          <div className="flex items-center justify-between w-full max-w-2xl mx-auto">
-            <button
-              onClick={() => setIsShuffle((s) => !s)}
-              className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full border ${
-                isShuffle
-                  ? "border-purple-500 bg-purple-500/20 text-purple-400"
-                  : "border-gray-500 bg-black/50 text-gray-400"
-              } hover:border-white hover:text-white flex items-center justify-center transition-all`}
-              title="Shuffle (visual only)"
-            >
-              <Shuffle className="w-4 h-4 sm:w-5 sm:h-5" />
-            </button>
+          <div className="flex flex-col items-center gap-3 w-full max-w-2xl mx-auto">
+            {/* Main playback controls */}
+            <div className="flex items-center justify-between w-full">
+              <button
+                onClick={() => setIsShuffle((s) => !s)}
+                className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full border ${
+                  isShuffle
+                    ? "border-purple-500 bg-purple-500/20 text-purple-400"
+                    : "border-gray-500 bg-black/50 text-gray-400"
+                } hover:border-white hover:text-white flex items-center justify-center transition-all`}
+                title="Shuffle (visual only)"
+              >
+                <Shuffle className="w-4 h-4 sm:w-5 sm:h-5" />
+              </button>
 
-            <button
-              onClick={() => {
-                // Reset to start; for live stream this does not change what is playing on the server.
-                if (audioRef.current) audioRef.current.currentTime = 0;
-              }}
-              className="w-8 h-8 sm:w-10 sm:h-10 rounded-full border border-gray-500 bg-black/50 text-gray-400 hover:border-white hover:text-white flex items-center justify-center transition-all"
-              title="Rewind (client only)"
-            >
-              <SkipBack className="w-4 h-4 sm:w-5 sm:h-5" />
-            </button>
+              <button
+                onClick={() => {
+                  // Reset to start; for live stream this does not change what is playing on the server.
+                  if (audioRef.current) audioRef.current.currentTime = 0;
+                }}
+                className="w-8 h-8 sm:w-10 sm:h-10 rounded-full border border-gray-500 bg-black/50 text-gray-400 hover:border-white hover:text-white flex items-center justify-center transition-all"
+                title="Rewind (client only)"
+              >
+                <SkipBack className="w-4 h-4 sm:w-5 sm:h-5" />
+              </button>
 
-            <button
-              onClick={() => setIsPlaying((p) => !p)}
-              className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 text-white flex items-center justify-center hover:scale-110 transition-transform shadow-lg shadow-purple-500/50"
-              title="Play / Pause stream"
-            >
-              {isPlaying ? (
-                <Pause className="w-6 h-6 sm:w-7 sm:h-7" />
-              ) : (
-                <Play className="w-6 h-6 sm:w-7 sm:h-7" />
-              )}
-            </button>
+              <button
+                onClick={() => setIsPlaying((p) => !p)}
+                className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 text-white flex items-center justify-center hover:scale-110 transition-transform shadow-lg shadow-purple-500/50"
+                title="Play / Pause stream"
+              >
+                {isPlaying ? (
+                  <Pause className="w-6 h-6 sm:w-7 sm:h-7" />
+                ) : (
+                  <Play className="w-6 h-6 sm:w-7 sm:h-7" />
+                )}
+              </button>
 
-            <button
-              onClick={() => {
-                // For live stream skipping forward has no effect server-side;
-                // advance 10s locally if the stream supports it (usually not useful for live).
-                if (audioRef.current) audioRef.current.currentTime += 10;
-              }}
-              className="w-8 h-8 sm:w-10 sm:h-10 rounded-full border border-gray-500 bg-black/50 text-gray-400 hover:border-white hover:text-white flex items-center justify-center transition-all"
-              title="Forward (client only)"
-            >
-              <SkipForward className="w-4 h-4 sm:w-5 sm:h-5" />
-            </button>
+              <button
+                onClick={() => {
+                  // For live stream skipping forward has no effect server-side;
+                  // advance 10s locally if the stream supports it (usually not useful for live).
+                  if (audioRef.current) audioRef.current.currentTime += 10;
+                }}
+                className="w-8 h-8 sm:w-10 sm:h-10 rounded-full border border-gray-500 bg-black/50 text-gray-400 hover:border-white hover:text-white flex items-center justify-center transition-all"
+                title="Forward (client only)"
+              >
+                <SkipForward className="w-4 h-4 sm:w-5 sm:h-5" />
+              </button>
 
-            <button
-              onClick={() => setIsRepeat((r) => !r)}
-              className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full border ${
-                isRepeat
-                  ? "border-purple-500 bg-purple-500/20 text-purple-400"
-                  : "border-gray-500 bg-black/50 text-gray-400"
-              } hover:border-white hover:text-white flex items-center justify-center transition-all`}
-              title="Repeat (visual only)"
-            >
-              <Repeat className="w-4 h-4 sm:w-5 sm:h-5" />
-            </button>
-
-            {/* volume slider */}
-            <div className="flex items-center gap-2 ml-4">
-              <Volume2 className="text-gray-300" />
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.01}
-                value={volume}
-                onChange={(e) => setVolume(parseFloat(e.target.value))}
-                className="w-40"
-              />
+              <button
+                onClick={() => setIsRepeat((r) => !r)}
+                className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full border ${
+                  isRepeat
+                    ? "border-purple-500 bg-purple-500/20 text-purple-400"
+                    : "border-gray-500 bg-black/50 text-gray-400"
+                } hover:border-white hover:text-white flex items-center justify-center transition-all`}
+                title="Repeat (visual only)"
+              >
+                <Repeat className="w-4 h-4 sm:w-5 sm:h-5" />
+              </button>
             </div>
 
-            {/* playlist toggle */}
-            <button
-              onClick={() => setShowPlaylist((s) => !s)}
-              className="ml-4 w-10 h-10 rounded-full border border-gray-500 bg-black/50 text-gray-400 hover:border-white hover:text-white flex items-center justify-center"
-              title="Show upcoming playlist"
-            >
-              <List />
-            </button>
+            {/* Volume and Playlist controls */}
+            <div className="flex items-center justify-between w-full pt-1">
+              {/* volume slider */}
+              <div className="flex items-center gap-2">
+                <Volume2 className="text-gray-300" />
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={volume}
+                  onChange={(e) => setVolume(parseFloat(e.target.value))}
+                  className="w-32 sm:w-40"
+                />
+              </div>
+
+              {/* playlist toggle */}
+              <button
+                onClick={() => setShowPlaylist((s) => !s)}
+                className="w-8 h-8 sm:w-10 sm:h-10 rounded-full border border-gray-500 bg-black/50 text-gray-400 hover:border-white hover:text-white flex items-center justify-center"
+                title="Show upcoming playlist"
+              >
+                <List />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -390,17 +490,17 @@ export default function PlayerBot() {
         {showPlaylist && (
           <div className="mt-3 bg-gray-900 rounded-lg p-3 max-h-64 overflow-y-auto">
             <h3 className="text-white font-bold mb-2 text-sm">
-              Upcoming / Queue
+              Upcoming & History
             </h3>
             <div className="space-y-2">
               {queue.length === 0 && (
                 <p className="text-gray-400 text-sm">
-                  No upcoming items found.
+                  No upcoming song or history found.
                 </p>
               )}
               {queue.map((item, idx) => (
                 <button
-                  key={idx}
+                  key={item.sh_id || `next-${idx}`}
                   onClick={() => onSelectQueueItem(idx)}
                   className={`w-full text-left p-2 rounded-lg transition-all ${
                     idx === selectedQueueIndex
@@ -414,13 +514,12 @@ export default function PlayerBot() {
                       <p className="text-white text-sm font-medium truncate">
                         {queueDisplayText(item)}
                       </p>
-                      <p className="text-gray-400 text-xs truncate">
-                        {item.cued_by || ""}
-                      </p>
                     </div>
-                    <span className="text-xs text-purple-400 uppercase">
-                      {item.type || ""}
-                    </span>
+                    {item.is_next && (
+                      <span className="text-xs text-green-400 uppercase font-bold">
+                        Next
+                      </span>
+                    )}
                   </div>
                 </button>
               ))}

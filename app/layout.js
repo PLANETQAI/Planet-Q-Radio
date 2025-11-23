@@ -33,9 +33,7 @@ export default async function RootLayout({ children }) {
         </div>
         <div className="relative z-10">
           <link rel="canonical" href={Domain} />
-
           {children}
-
           <Toaster
             position="top-center"
             toastOptions={{
