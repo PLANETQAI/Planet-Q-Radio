@@ -14,44 +14,30 @@ import {
   List,
 } from "lucide-react";
 
-/*
-  CONFIG - change as needed
-  - API_BASE: your AzuraCast base
-  - STATION_ID: your station ID
-  - STREAM_URL: your stream URL
-*/
 const API_BASE = process.env.NEXT_PUBLIC_AZURACAST_API;
 const STATION_ID = process.env.NEXT_PUBLIC_STATION_ID;
 const STREAM_URL = process.env.NEXT_PUBLIC_STREAM_URL;
 
-// Assuming API_BASE is set to 'http://host/api', this builds the correct URL to the nowplaying endpoint.
 const NOW_PLAYING_URL = `${API_BASE}/nowplaying`;
 
-// Util to construct full absolute URL for artwork
 function getAlbumArtUrl(nowPlaying) {
   if (!nowPlaying) return null;
-
   const song = nowPlaying.now_playing?.song || {};
   const art = song.art || null;
-
   if (!art) return null;
   if (art.startsWith("http")) return art;
-
   try {
     const origin = new URL(API_BASE).origin;
     return `${origin}${art}`;
   } catch (e) {
     console.error("Error constructing album art URL:", e);
-    return art; // fallback to relative
+    return art;
   }
 }
 
-// Util to find a video URL from custom fields
 function getVideoUrl(nowPlaying) {
   const customFields = nowPlaying?.now_playing?.song?.custom_fields;
   if (!customFields) return null;
-
-  // Look for a field that contains a video URL
   for (const key in customFields) {
     const value = customFields[key];
     if (typeof value === "string") {
@@ -68,29 +54,21 @@ function getVideoUrl(nowPlaying) {
   return null;
 }
 
-// Util to convert a youtube watch URL to an embeddable one
 function getYoutubeEmbedUrl(youtubeUrl) {
   if (!youtubeUrl) return null;
-
   let videoId = null;
-
-  // Regex for youtube.com/watch?v=...
   const watchMatch = youtubeUrl.match(/[?&]v=([^&]+)/);
   if (watchMatch && watchMatch[1]) {
     videoId = watchMatch[1];
   } else {
-    // Regex for youtu.be/...
     const shortMatch = youtubeUrl.match(/youtu\.be\/([^?&#]+)/);
     if (shortMatch && shortMatch[1]) {
       videoId = shortMatch[1];
     }
   }
-
   if (videoId) {
-    // Autoplay, mute, loop, no controls for background effect
-    return `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&loop=1&playlist=${videoId}&controls=0&showinfo=0&autohide=1`;
+    return `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&loop=1&playlist=${videoId}&controls=0&showinfo=0&autohide=1&enablejsapi=1`;
   }
-
   return null;
 }
 
@@ -100,38 +78,26 @@ export default function AzurePlayerBot() {
   const ytPlayerRef = useRef(null);
   const [isYtPlayerReady, setIsYtPlayerReady] = useState(false);
 
-  // metadata
   const [nowPlaying, setNowPlaying] = useState(null);
-  const [queue, setQueue] = useState([]); // will be [playing_next, ...song_history]
-
-  // UI states
+  const [queue, setQueue] = useState([]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [volume, setVolume] = useState(0.75);
   const [isShuffle, setIsShuffle] = useState(false);
   const [isRepeat, setIsRepeat] = useState(false);
   const [showPlaylist, setShowPlaylist] = useState(false);
-
-  // Selected queue item (for display only)
   const [selectedQueueIndex, setSelectedQueueIndex] = useState(null);
 
-  // Fetch now playing data
   const fetchNowPlaying = useCallback(async () => {
     try {
       const res = await fetch(NOW_PLAYING_URL, { cache: "no-store" });
       if (!res.ok) throw new Error("NowPlaying fetch failed");
-
-      // Per user, the response can be an array with one station object, or just the object
       const data = await res.json();
       console.log("Fetched now playing data:", data);
       const stationData = Array.isArray(data) ? data[0] : data;
-
       if (stationData) {
         setNowPlaying(stationData);
-
-        // Update queue from now playing data
         const nextSong = stationData.playing_next;
         const history = stationData.song_history || [];
-
         const newQueue = [];
         if (nextSong) {
           newQueue.push({ ...nextSong, is_next: true });
@@ -140,12 +106,10 @@ export default function AzurePlayerBot() {
         setQueue(newQueue);
       }
     } catch (err) {
-      // silently fail but keep previous state
       console.error("Error fetching nowplaying:", err);
     }
   }, []);
 
-  // metadata helpers
   const title =
     nowPlaying?.now_playing?.song?.title ||
     nowPlaying?.now_playing?.song?.text ||
@@ -156,37 +120,27 @@ export default function AzurePlayerBot() {
     "";
 
   const albumArtUrl = getAlbumArtUrl(nowPlaying);
-  const coverSrc = albumArtUrl || "/images/radio1.jpeg"; // fallback image
-
+  const coverSrc = albumArtUrl || "/images/radio1.jpeg";
   const videoUrl = getVideoUrl(nowPlaying);
   const youtubeEmbedUrl = getYoutubeEmbedUrl(videoUrl);
 
   useEffect(() => {
-    // initial load
     fetchNowPlaying();
-
-    // autopoll every 5 seconds
     const interval = setInterval(fetchNowPlaying, 5000);
-
     return () => clearInterval(interval);
   }, [fetchNowPlaying]);
 
-  // audio element management
   useEffect(() => {
     if (!audioRef.current) return;
     audioRef.current.volume = volume;
   }, [volume]);
 
   useEffect(() => {
-    // If user toggles isPlaying, control audio element
     if (!audioRef.current) return;
-
     if (isPlaying) {
       const p = audioRef.current.play();
-      // handle autoplay promise rejection
       if (p && typeof p.then === "function") {
         p.catch((err) => {
-          // Autoplay blocked by browser - set isPlaying false
           console.warn("Autoplay prevented:", err);
           setIsPlaying(false);
         });
@@ -196,25 +150,28 @@ export default function AzurePlayerBot() {
     }
   }, [isPlaying]);
 
-  // control video playback
   useEffect(() => {
-    // For HTML5 video, play/pause along with audio
     if (videoRef.current) {
       if (isPlaying) {
-        videoRef.current.play().catch(() => {
-          // Video play was likely prevented by browser.
-        });
+        videoRef.current.play().catch(() => {});
       } else {
         videoRef.current.pause();
       }
     }
-  }, [isPlaying, nowPlaying]);
+  }, [isPlaying]);
 
-  // YouTube Player State Management
+  // YouTube Player Setup - FIXED
   useEffect(() => {
     if (!youtubeEmbedUrl) {
-      if (ytPlayerRef.current) {
-        ytPlayerRef.current.destroy();
+      if (
+        ytPlayerRef.current &&
+        typeof ytPlayerRef.current.destroy === "function"
+      ) {
+        try {
+          ytPlayerRef.current.destroy();
+        } catch (e) {
+          console.error("Error destroying YouTube player:", e);
+        }
         ytPlayerRef.current = null;
       }
       setIsYtPlayerReady(false);
@@ -225,34 +182,59 @@ export default function AzurePlayerBot() {
     if (!videoId) return;
 
     const setupPlayer = () => {
-      if (ytPlayerRef.current) {
-        ytPlayerRef.current.destroy();
+      // Clean up existing player
+      if (
+        ytPlayerRef.current &&
+        typeof ytPlayerRef.current.destroy === "function"
+      ) {
+        try {
+          ytPlayerRef.current.destroy();
+        } catch (e) {
+          console.error("Error destroying YouTube player:", e);
+        }
       }
-      ytPlayerRef.current = new window.YT.Player("youtube-player-container", {
-        videoId: videoId,
-        playerVars: {
-          autoplay: 0,
-          mute: 1,
-          loop: 1,
-          playlist: videoId,
-          controls: 0,
-        },
-        events: {
-          onReady: () => setIsYtPlayerReady(true),
-        },
-      });
+
+      // Reset ready state
+      setIsYtPlayerReady(false);
+
+      try {
+        ytPlayerRef.current = new window.YT.Player("youtube-player-container", {
+          videoId: videoId,
+          playerVars: {
+            autoplay: 0,
+            mute: 1,
+            loop: 1,
+            playlist: videoId,
+            controls: 0,
+            modestbranding: 1,
+            rel: 0,
+          },
+          events: {
+            onReady: (event) => {
+              console.log("YouTube player ready");
+              setIsYtPlayerReady(true);
+            },
+            onError: (event) => {
+              console.error("YouTube player error:", event.data);
+              setIsYtPlayerReady(false);
+            },
+          },
+        });
+      } catch (e) {
+        console.error("Error creating YouTube player:", e);
+        setIsYtPlayerReady(false);
+      }
     };
 
-    // If the API is ready, setup the player
     if (window.YT && window.YT.Player) {
       setupPlayer();
     } else {
-      // If API not ready, we need to load it.
-      // The global callback will be responsible for setting up the player.
       window.onYouTubeIframeAPIReady = setupPlayer;
-
-      // Check if the script tag already exists to avoid duplicates
-      if (!document.querySelector('script[src="https://www.youtube.com/iframe_api"]')) {
+      if (
+        !document.querySelector(
+          'script[src="https://www.youtube.com/iframe_api"]'
+        )
+      ) {
         const tag = document.createElement("script");
         tag.src = "https://www.youtube.com/iframe_api";
         document.body.appendChild(tag);
@@ -260,23 +242,32 @@ export default function AzurePlayerBot() {
     }
   }, [youtubeEmbedUrl]);
 
+  // Control YouTube playback - FIXED with better validation
   useEffect(() => {
-    if (ytPlayerRef.current && isYtPlayerReady) {
-      if (isPlaying) {
-        ytPlayerRef.current.playVideo();
-      } else {
-        ytPlayerRef.current.pauseVideo();
+    // Only attempt to control if player exists, is ready, and has the required methods
+    if (
+      ytPlayerRef.current &&
+      isYtPlayerReady &&
+      typeof ytPlayerRef.current.playVideo === "function" &&
+      typeof ytPlayerRef.current.pauseVideo === "function"
+    ) {
+      try {
+        if (isPlaying) {
+          ytPlayerRef.current.playVideo();
+        } else {
+          ytPlayerRef.current.pauseVideo();
+        }
+      } catch (err) {
+        console.error("YouTube player control error:", err);
       }
     }
   }, [isPlaying, isYtPlayerReady]);
 
-  // For queue item display: normalize for display string
   const queueDisplayText = (item) => {
     if (!item || !item.song) return "";
     return item.song.text || `${item.song.title} - ${item.song.artist}`;
   };
 
-  // clicking a playlist item will select it (display only)
   const onSelectQueueItem = (index) => {
     setSelectedQueueIndex(index);
     setShowPlaylist(false);
@@ -287,14 +278,26 @@ export default function AzurePlayerBot() {
       className="w-full sm:w-[80%] mx-auto"
       onClick={(e) => e.stopPropagation()}
     >
+      {/* Add custom CSS for animations */}
+      <style jsx>{`
+        @keyframes spin-slow {
+          from {
+            transform: rotate(0deg);
+          }
+          to {
+            transform: rotate(360deg);
+          }
+        }
+        .animate-spin-slow {
+          animation: spin-slow 10s linear infinite;
+        }
+      `}</style>
+
       {/* header */}
       <div
         className="flex items-center justify-between px-2 sm:px-4 py-2 sm:py-2 w-full rounded-t-lg"
-        style={{
-          backgroundColor: "rgb(31 41 55 / 0.9)",
-        }}
+        style={{ backgroundColor: "rgb(31 41 55 / 0.9)" }}
       >
-        {/* left circle */}
         <div className="relative w-16 sm:w-20 md:w-24 aspect-square overflow-hidden">
           <div className="absolute inset-0 flex items-center justify-center overflow-hidden rounded-full">
             <video
@@ -315,7 +318,6 @@ export default function AzurePlayerBot() {
           </div>
         </div>
 
-        {/* center */}
         <div className="flex justify-center items-center flex-col gap-4">
           <Link
             href={"/chat"}
@@ -345,7 +347,6 @@ export default function AzurePlayerBot() {
           </p>
         </div>
 
-        {/* right */}
         <div className="relative w-16 sm:w-20 md:w-24 aspect-square overflow-hidden">
           <div className="absolute inset-0 flex items-center justify-center overflow-hidden rounded-full">
             <video
@@ -367,74 +368,82 @@ export default function AzurePlayerBot() {
         </div>
       </div>
 
-      {/* video / art area */}
+      {/* video / art area - FIXED */}
       <div
         className="relative w-full bg-black"
         style={{ paddingBottom: "56.25%" }}
       >
         <div className="absolute inset-0">
-          {/* background visual (animated or static) */}
-          {youtubeEmbedUrl ? (
-            <div className="relative w-full h-full bg-black">
-              {/* Album Art as thumbnail/background */}
-              {albumArtUrl && (
-                <Image
-                  key={albumArtUrl}
-                  src={albumArtUrl}
-                  alt="Song artwork background"
-                  fill
-                  className="object-cover"
-                  unoptimized
-                />
-              )}
-              {/* YouTube Player (conditionally visible) */}
-              <div
-                id="youtube-player-container"
-                className={`absolute top-0 left-0 w-full h-full transition-opacity duration-300 ${
-                  isYtPlayerReady && isPlaying ? "opacity-100" : "opacity-0"
-                }`}
+          {/* Background layer - always visible */}
+          <div className="absolute inset-0">
+            {albumArtUrl ? (
+              <Image
+                key={albumArtUrl}
+                src={albumArtUrl}
+                alt="Song artwork background"
+                fill
+                className="object-cover"
+                unoptimized
               />
+            ) : (
+              <video
+                src="/images/bg-video-compressed.mp4"
+                className="absolute top-0 left-0 w-full h-full object-cover"
+                loop
+                muted
+                autoPlay
+              />
+            )}
+          </div>
+
+          {/* YouTube Video Layer - shows when playing */}
+          {youtubeEmbedUrl && (
+            <div
+              className={`absolute inset-0 bg-black transition-opacity duration-500 ${
+                isPlaying ? "opacity-100 z-10" : "opacity-0 z-0"
+              }`}
+            >
+              <div id="youtube-player-container" className="w-full h-full" />
             </div>
-          ) : videoUrl && videoUrl.endsWith('.mp4') ? (
+          )}
+
+          {/* MP4 Video Layer */}
+          {!youtubeEmbedUrl && videoUrl && videoUrl.endsWith(".mp4") && (
             <video
               ref={videoRef}
               key={videoUrl}
               src={videoUrl}
-              className="absolute top-0 left-0 w-full h-full object-cover"
-              loop
-              muted
-            />
-          ) : albumArtUrl ? (
-            <Image
-              key={albumArtUrl}
-              src={albumArtUrl}
-              alt="Song artwork background"
-              fill
-              className="object-cover"
-              unoptimized
-            />
-          ) : (
-            <video
-              ref={videoRef}
-              src="/images/bg-video-compressed.mp4"
-              className="absolute top-0 left-0 w-full h-full object-cover"
+              className="absolute top-0 left-0 w-full h-full object-cover z-10"
               loop
               muted
             />
           )}
 
-          {/* overlay track info + album art */}
-          <div className="absolute inset-0 flex items-end">
+          {/* Overlay with animated album art */}
+          <div className="absolute inset-0 flex items-end z-20">
             <div className="flex gap-4 items-end p-4 w-full bg-gradient-to-t from-black/95 via-black/70 to-transparent">
               <div className="w-20 h-20 sm:w-28 sm:h-28 relative rounded overflow-hidden">
-                {/* album art (fallback if missing) */}
+                {/* Animated album art when playing */}
                 <Image
                   src={coverSrc}
                   alt="Album Art"
                   fill
-                  className="object-cover"
-                  unoptimized // Important for external URLs not in next.config.js
+                  className={`object-cover ${
+                    isPlaying ? "animate-spin-slow" : ""
+                  }`}
+                  unoptimized
                 />
+                {/* Pulsing ring effect when playing */}
+                {isPlaying && (
+                  <>
+                    <div className="absolute inset-0 rounded animate-pulse">
+                      <div className="absolute inset-0 rounded border-2 border-purple-500/50" />
+                    </div>
+                    <div className="absolute inset-0 rounded animate-ping opacity-75">
+                      <div className="absolute inset-0 rounded border-2 border-purple-400/30" />
+                    </div>
+                  </>
+                )}
               </div>
 
               <div className="flex-1">
@@ -445,8 +454,14 @@ export default function AzurePlayerBot() {
                   {artist}
                 </p>
                 <div className="flex items-center gap-2 mt-2">
-                  <span className="inline-block text-xs bg-purple-500/30 text-purple-300 px-2 py-1 rounded">
-                    LIVE
+                  <span
+                    className={`inline-block text-xs px-2 py-1 rounded transition-all ${
+                      isPlaying
+                        ? "bg-red-500/30 text-red-300 animate-pulse"
+                        : "bg-purple-500/30 text-purple-300"
+                    }`}
+                  >
+                    {isPlaying ? "● LIVE" : "LIVE"}
                   </span>
                   <span className="text-gray-400 text-xs">
                     Station: {nowPlaying?.station?.name || "Planet Q"}
@@ -458,14 +473,12 @@ export default function AzurePlayerBot() {
         </div>
       </div>
 
-      {/* audio element (live stream) */}
       <audio ref={audioRef} src={STREAM_URL} crossOrigin="anonymous" />
 
       {/* controls */}
       <div className="bg-gray-800 w-full rounded-b-lg p-3 sm:p-4">
         <div className="w-full mb-3">
           <div className="flex flex-col items-center gap-3 w-full max-w-2xl mx-auto">
-            {/* Main playback controls */}
             <div className="flex items-center justify-between w-full">
               <button
                 onClick={() => setIsShuffle((s) => !s)}
@@ -474,18 +487,15 @@ export default function AzurePlayerBot() {
                     ? "border-purple-500 bg-purple-500/20 text-purple-400"
                     : "border-gray-500 bg-black/50 text-gray-400"
                 } hover:border-white hover:text-white flex items-center justify-center transition-all`}
-                title="Shuffle (visual only)"
               >
                 <Shuffle className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
 
               <button
                 onClick={() => {
-                  // Reset to start; for live stream this does not change what is playing on the server.
                   if (audioRef.current) audioRef.current.currentTime = 0;
                 }}
                 className="w-8 h-8 sm:w-10 sm:h-10 rounded-full border border-gray-500 bg-black/50 text-gray-400 hover:border-white hover:text-white flex items-center justify-center transition-all"
-                title="Rewind (client only)"
               >
                 <SkipBack className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
@@ -493,7 +503,6 @@ export default function AzurePlayerBot() {
               <button
                 onClick={() => setIsPlaying((p) => !p)}
                 className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 text-white flex items-center justify-center hover:scale-110 transition-transform shadow-lg shadow-purple-500/50"
-                title="Play / Pause stream"
               >
                 {isPlaying ? (
                   <Pause className="w-6 h-6 sm:w-7 sm:h-7" />
@@ -504,12 +513,9 @@ export default function AzurePlayerBot() {
 
               <button
                 onClick={() => {
-                  // For live stream skipping forward has no effect server-side;
-                  // advance 10s locally if the stream supports it (usually not useful for live).
                   if (audioRef.current) audioRef.current.currentTime += 10;
                 }}
                 className="w-8 h-8 sm:w-10 sm:h-10 rounded-full border border-gray-500 bg-black/50 text-gray-400 hover:border-white hover:text-white flex items-center justify-center transition-all"
-                title="Forward (client only)"
               >
                 <SkipForward className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
@@ -521,15 +527,12 @@ export default function AzurePlayerBot() {
                     ? "border-purple-500 bg-purple-500/20 text-purple-400"
                     : "border-gray-500 bg-black/50 text-gray-400"
                 } hover:border-white hover:text-white flex items-center justify-center transition-all`}
-                title="Repeat (visual only)"
               >
                 <Repeat className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
             </div>
 
-            {/* Volume and Playlist controls */}
             <div className="flex items-center justify-between w-full pt-1">
-              {/* volume slider */}
               <div className="flex items-center gap-2">
                 <Volume2 className="text-gray-300" />
                 <input
@@ -543,11 +546,9 @@ export default function AzurePlayerBot() {
                 />
               </div>
 
-              {/* playlist toggle */}
               <button
                 onClick={() => setShowPlaylist((s) => !s)}
                 className="w-8 h-8 sm:w-10 sm:h-10 rounded-full border border-gray-500 bg-black/50 text-gray-400 hover:border-white hover:text-white flex items-center justify-center"
-                title="Show upcoming playlist"
               >
                 <List />
               </button>
@@ -555,7 +556,6 @@ export default function AzurePlayerBot() {
           </div>
         </div>
 
-        {/* playlist dropdown */}
         {showPlaylist && (
           <div className="mt-3 bg-gray-900 rounded-lg p-3 max-h-64 overflow-y-auto">
             <h3 className="text-white font-bold mb-2 text-sm">
@@ -596,7 +596,6 @@ export default function AzurePlayerBot() {
           </div>
         )}
 
-        {/* selected queue detail (display only) */}
         {selectedQueueIndex !== null && queue[selectedQueueIndex] && (
           <div className="mt-3 bg-gray-800 rounded-lg p-3">
             <h4 className="text-white font-semibold">Selected Item</h4>
