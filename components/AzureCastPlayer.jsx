@@ -1,18 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import Image from "next/image";
-import Link from "next/link";
 import {
-  Play,
+  List,
   Pause,
-  SkipForward,
-  SkipBack,
-  Volume2,
+  Play,
   Repeat,
   Shuffle,
-  List,
+  SkipBack,
+  SkipForward,
+  Volume2,
 } from "lucide-react";
+import Image from "next/image";
+import Link from "next/link";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const API_BASE = process.env.NEXT_PUBLIC_AZURACAST_API;
 const STATION_ID = process.env.NEXT_PUBLIC_STATION_ID;
@@ -374,7 +374,7 @@ export default function AzurePlayerBot() {
         <div className="absolute inset-0">
           {/* Background layer - always visible */}
           <div className="absolute inset-0">
-            {albumArtUrl ? (
+            {isPlaying && albumArtUrl ? (
               <Image
                 key={albumArtUrl}
                 src={albumArtUrl}
