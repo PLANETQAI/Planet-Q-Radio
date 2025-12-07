@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import api from "../../../lib/api"; // Import the api client
 import RewardGraphDialog from "./RewardGraphDialog";
@@ -79,7 +80,8 @@ function getYoutubeEmbedUrl(youtubeUrl) {
 }
 
 export default function AzurePlayerBot() {
-  const { user, isAuthenticated, loading: userLoading, fetchUserCredits } = useUser();
+  const { user, isAuthenticated, loading: userLoading, fetchUserCredits ,credits: userCredits} = useUser();
+  const router = useRouter();
   const audioRef = useRef(null);
   const videoRef = useRef(null);
   const ytPlayerRef = useRef(null);
@@ -96,7 +98,6 @@ export default function AzurePlayerBot() {
   const [showPoints, setShowPoints] = useState(false);
   const [selectedQueueIndex, setSelectedQueueIndex] = useState(null);
 
-  const { credits: userCredits } = useUser(); // Get userCredits from context
 
   const { points, rawPoints } = useListeningRewards(false, isPlaying, userCredits);
 
@@ -136,6 +137,12 @@ export default function AzurePlayerBot() {
   const coverSrc = albumArtUrl || "/images/radio1.jpeg";
   const videoUrl = getVideoUrl(nowPlaying);
   const youtubeEmbedUrl = getYoutubeEmbedUrl(videoUrl);
+
+useEffect(() => {
+  if (isAuthenticated) {
+    fetchUserCredits();
+  }
+}, [isAuthenticated, fetchUserCredits]);
 
   useEffect(() => {
     fetchNowPlaying();
@@ -539,9 +546,7 @@ export default function AzurePlayerBot() {
 
               <button
                 onClick={togglePlayPause}
-                className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 text-white flex items-center justify-center ${(!userCredits || (userCredits.radio?.current <= 0 && !userCredits.isRadioSubscribed)) ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-90'
-                  }`}
-                disabled={!userCredits || (userCredits.radio?.current <= 0 && !userCredits.isRadioSubscribed)}
+                className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 text-white flex items-center justify-center hover:opacity-90"
               >
                 {isPlaying ? <Pause /> : <Play />}
               </button>
