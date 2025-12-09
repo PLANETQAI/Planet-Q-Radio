@@ -4,6 +4,7 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useUserData } from '@/hooks/useUserData';
+import api from '@/lib/api';
 import { ArrowLeft, CheckCircle, Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
@@ -17,6 +18,26 @@ export default function WithdrawPage() {
 
     console.log("User data", userData)
 
+        const handleConnectAccount = async () => {
+        try {
+            setIsConnecting(true);
+            const response = await api.get('/api/payments/connect-account');
+            const data = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(data.error || 'Failed to connect Stripe account');
+            }
+            
+            // Redirect to Stripe onboarding
+            window.location.href = data.url;
+        } catch (error) {
+            console.error('Error connecting Stripe account:', error);
+            toast.error(error.message || 'Failed to connect Stripe account');
+        } finally {
+            setIsConnecting(false);
+        }
+    };
+
     if (isLoading) {
         return (
             <div className="flex items-center justify-center min-h-screen">
@@ -26,7 +47,8 @@ export default function WithdrawPage() {
     }
 
     if (!userData) {
-        return null; // Redirect will happen in useUserData
+        router.push("/login?redirect=/productions");
+      return;
     }
 
     return (
