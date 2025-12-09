@@ -226,31 +226,31 @@ export default function RewardGraphDialog(
   }, [data]);
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white border-slate-700/50 shadow-2xl">
+      <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="w-[95vw] max-w-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white border-slate-700/50 shadow-2xl">
         <DialogHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <DialogTitle className="text-2xl font-bold bg-gradient-to-r from-green-400 to-blue-500 bg-clip-text text-transparent">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="w-full sm:w-auto">
+              <DialogTitle className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-green-400 to-blue-500 bg-clip-text text-transparent">
                 REWARDS MARKET
               </DialogTitle>
-              <DialogDescription className="text-slate-400 mt-1">
+              <DialogDescription className="text-xs sm:text-sm text-slate-400 mt-0.5">
                 Real-time rewards tracking and analytics
               </DialogDescription>
             </div>
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center justify-between sm:justify-end w-full sm:w-auto gap-2 sm:gap-4">
               <div className="text-right">
-                <div className="text-xs text-slate-400">Your Rank</div>
-                <div className="text-yellow-400 font-mono text-xl font-bold">
+                <div className="text-[10px] sm:text-xs text-slate-400">Rank</div>
+                <div className="text-yellow-400 font-mono text-lg sm:text-xl font-bold">
                   #{userPosition || '-'}
                 </div>
               </div>
               <div className="h-8 w-px bg-slate-700"></div>
               <div className="text-right">
-                <div className="text-xs text-slate-400">Points</div>
-                <div className="text-white font-mono text-xl font-bold">
+                <div className="text-[10px] sm:text-xs text-slate-400">Points</div>
+                <div className="text-white font-mono text-lg sm:text-xl font-bold">
                   {currentPrice.toFixed(2)}
-                  <span className={`ml-2 text-xs ${priceChange.isPositive ? 'text-green-400' : 'text-red-400'}`}>
+                  <span className={`ml-1 sm:ml-2 text-xs ${priceChange.isPositive ? 'text-green-400' : 'text-red-400'}`}>
                     {priceChange.isPositive ? '↑' : '↓'} {priceChange.value}%
                   </span>
                 </div>
@@ -260,11 +260,11 @@ export default function RewardGraphDialog(
         </DialogHeader>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4
-          [&>div]:bg-slate-800/50 [&>div]:backdrop-blur-sm [&>div]:rounded-lg [&>div]:p-3 [&>div]:border [&>div]:border-slate-700/50">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-3 sm:mb-4
+          [&>div]:bg-slate-800/50 [&>div]:backdrop-blur-sm [&>div]:rounded-lg [&>div]:p-2 sm:[&>div]:p-3 [&>div]:border [&>div]:border-slate-700/50">
           <div className="flex items-center">
-            <div className="p-2 rounded-full bg-green-500/10 text-green-400 mr-3">
-              <Activity className="w-4 h-4" />
+            <div className="p-1.5 sm:p-2 rounded-full bg-green-500/10 text-green-400 mr-2 sm:mr-3">
+              <Activity className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </div>
             <div>
               <div className="text-xs text-slate-400">Total Points</div>
@@ -273,8 +273,8 @@ export default function RewardGraphDialog(
           </div>
        
           <div className="flex items-center">
-            <div className="p-2 rounded-full bg-yellow-500/10 text-yellow-400 mr-3">
-              <Award className="w-4 h-4" />
+            <div className="p-1.5 sm:p-2 rounded-full bg-yellow-500/10 text-yellow-400 mr-2 sm:mr-3">
+              <Award className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </div>
             <div>
               <div className="text-xs text-slate-400">Avg. Points</div>
@@ -282,8 +282,8 @@ export default function RewardGraphDialog(
             </div>
           </div>
           <div className="flex items-center">
-            <div className="p-2 rounded-full bg-purple-500/10 text-purple-400 mr-3">
-              <Clock className="w-4 h-4" />
+            <div className="p-1.5 sm:p-2 rounded-full bg-purple-500/10 text-purple-400 mr-2 sm:mr-3">
+              <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </div>
             <div>
               <div className="text-xs text-slate-400">Last Updated</div>
@@ -291,13 +291,16 @@ export default function RewardGraphDialog(
             </div>
           </div>
              <div className="flex items-center">
-            <Button onClick={() => route.push('/payment/withdraw')} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg">
+            <Button 
+              onClick={() => route.push('/payment/withdraw')} 
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm sm:text-base px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg"
+            >
               Withdraw
             </Button>
           </div>
         </div>
 
-        <div className="relative w-full mt-2 rounded-xl overflow-hidden border border-slate-700/50" style={{ height: '400px' }}>
+        <div className="relative w-full mt-2 rounded-xl overflow-hidden border border-slate-700/50" style={{ height: '300px', minHeight: '250px' }}>
           {/* Animated background grid */}
           <div className="absolute inset-0 opacity-20" style={{
             backgroundImage: 'linear-gradient(to right, #334155 1px, transparent 1px), linear-gradient(to bottom, #334155 1px, transparent 1px)',
